@@ -1,5 +1,5 @@
 RM=rm
-
+BUILD=build/
 # Note, this preface is primarily aimed at figureing out which compiler to use if different environment variables aren't set
 ifndef COMPILER
 	ifndef F90
@@ -29,6 +29,7 @@ $(info F90 undefined, changed to ${F90})
 	endif
 
 	FFLAGS=-O3 -fimplicit-none
+	MODOUTPUT=-J $(BUILD)
 	ifeq (${MODE}, debug)
 		FFLAGS=-g -fcheck=all -fbacktrace -fimplicit-none
 	endif
@@ -45,23 +46,24 @@ $(info F90 undefined, changed to ${F90})
 	endif
 
 	FFLAGS=-O3 -xHost -u
+	MODOUTPUT=-module $(BUILD)
 	ifeq (${MODE}, debug)
 		FFLAGS=-debug -debug-parameters all -traceback -g -u -check all -check noarg_temp_created -CB
 	endif
 endif
 
 LFLAGS=${FFLAGS} -L${NETCDF}/lib ${NCAR_LIBS_NETCDF}
-FCFLAGS=${FFLAGS} -c -I${NCAR_INC_NETCDF}
+FCFLAGS=${FFLAGS} -c -I${NCAR_INC_NETCDF} ${MODOUTPUT}
 
 all: lbm_basic
 
 clean:
-	${RM} lbm_basic *.o *.mod
+	${RM} lbm_basic $(BUILD)*.o $(BUILD)*.mod
 
-lbm_basic:lbm_basic.o io_routines.o
+lbm_basic:$(BUILD)lbm_basic.o $(BUILD)io_routines.o
 	${F90} ${LFLAGS} $^ -o $@
 
-lbm_basic.o: io_routines.o
+$(BUILD)lbm_basic.o: $(BUILD)io_routines.o
 
-%.o:%.f90
+$(BUILD)%.o:%.f90
 	${F90} ${FCFLAGS} $< -o $@
