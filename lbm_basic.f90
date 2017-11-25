@@ -2,16 +2,17 @@
 ! although some of this is generalized, a lot of it is hard coded for D2Q9
 program lbm
 
+    use io_routines, only : io_write
     implicit none
 
-    integer :: n_iterations = 1000
+    integer :: n_iterations = 20000
 
     real    :: Re     = 200.0  ! Reynolds number.
     integer, parameter :: nx     = 520
     integer, parameter :: ny     = 180
     ! ly=ny-1.0;
     integer, parameter :: q      = 9      ! lattice type/size
-    real    :: u_lattice    = 0.03   ! lattice fluid velocity
+    real    :: u_lattice    = 0.04   ! lattice fluid velocity
     real    :: radius = 20
     real    :: tau
 
@@ -39,7 +40,7 @@ program lbm
     obstacle(:,1) = .True.
 
     tau    = 1.0 / (3. * (u_lattice * radius/Re) + 0.5) ! time relaxation
-
+    print*, 'Tau',tau
     ! Not the most typical c configuration, will have to think about this some
     !
     ! c =  1 [[ 0,  0],       6  3  9
@@ -65,26 +66,27 @@ program lbm
     velocity(1,:,:) = u_lattice
     velocity(2,:,:) = 0
 
-
     call equilibrium(rho, velocity, f_eq, c_u, w, c)
 
     f = f_eq
     u = velocity
 
-    print*, u(:,2,2)
-
     ! Time loop
     do i=1,n_iterations
+        if (mod(i,100)==0) print*, i, "  of", n_iterations
         call update(f, u, c_u, velocity, f_eq, noslip, obstacle, w, c)
-        ! print*, u(1,2,:50:10)
+
     end do
+
+    call io_write("output_U.nc","u",  &
+                  reshape(u, [ny,nx,2], order=[3,2,1]))
 
 contains
 
     subroutine equilibrium(rho, vel, feq, cu, w, c)
         implicit none
-        real,    intent(inout) :: rho(:,:)
-        real,    intent(inout) :: vel(:,:,:)
+        real,    intent(in)    :: rho(:,:)
+        real,    intent(in)    :: vel(:,:,:)
         real,    intent(inout) :: feq(:,:,:)
         real,    intent(inout) :: cu(:,:,:)
         real,    intent(in)    :: w(:)
@@ -108,6 +110,8 @@ contains
                               - 3./2. * (vel(1,j,k)**2 + vel(2,j,k)**2))
             enddo
         enddo
+
+        ! print*, 'feq',feq(:,3,3)
 
     end subroutine equilibrium
 
@@ -143,10 +147,7 @@ contains
         enddo
 
         ! compute density
-        rho = 0
-        do i = 1, nq
-            rho = rho + f(i,:,:)
-        enddo
+        rho = sum(f,1)
 
         do k = 1, ny
             do j = 1, nx
@@ -188,59 +189,16 @@ contains
                 enddo
             enddo
         enddo
+
         do k = 1, ny
             do j = 1, nx
                 do i = 1, nq
-                    f(i,j,k) = f_temp(i,mod((j-1)-c(1,i)+nq,nx)+1,mod((k-1)-c(2,i)+nq,ny)+1)
+                    f(i,j,k) = f_temp(i,mod((j-1)-c(1,i)+nx,nx)+1, mod((k-1)-c(2,i)+ny,ny)+1)
                 enddo
             enddo
         enddo
-
+        ! print*, 'f',f(:,1,1)
+        ! print*, ""
     end subroutine update
-
-! @jit#(nopython=True)
-! def update(fin, u, cu, feq, xpts, ypts, noslip, obstacle):
-!     fin[i1,-1,:] = fin[i1,-2,:]     # Right wall: outflow condition.
-!     rho = np.sum(fin,axis=0)
-!     # rho = fin[0]
-!     # for i in range(1,q):
-!     #     rho += fin[i]            # Calculate macroscopic density and velocity.
-!
-!     # u = np.dot(c.transpose(), fin.transpose((1,0,2)))/rho
-!     for i in range(2):
-!         for j in range(nx):
-!             for k in range(ny):
-!                 u[i,j,k] = 0
-!                 # if not obstacle[j,k]:
-!                 for n in range(q):
-!                     u[i,j,k] += (c[n,i] * fin[n,j,k])
-!                 u[i,j,k] /= rho[j,k]
-!
-!     u[:,0,:] =vel[:,0,:] # Left wall: compute density from known populations.
-!     rho[0,:] = 0
-!     for i in range(len(i2)):
-!         rho[0,:] += 1./(1.-u[0,0,:]) * (fin[i2[i],0,:] + 2. * fin[i1[i],0,:])
-!
-!     equilibrium(rho,u, feq, cu)#, obstacle) # Left wall: Zou/He boundary condition.
-!     fin[i3,0,:] = fin[i1,0,:] + feq[i3,0,:] - fin[i1,0,:]
-!     fout = fin - omega * (fin - feq)  # Collision step.
-!
-!
-!     for i in range(q):
-!         # fout[i,obstacle] = fin[noslip[i],obstacle]
-!         for j in range(len(xpoints)):
-!             fout[i,xpts[j],ypts[j]] = fin[noslip[i],xpts[j],ypts[j]]
-!
-!     # for i in range(q): # Streaming step.
-!     #     fin[i,:,:] = np.roll(
-!     #                         np.roll(
-!     #                             fout[i,:,:],c[i,0],axis=0), c[i,1],axis=1)
-!     for i in range(q): # Streaming step.
-!         for x in range(nx):
-!             for y in range(ny):
-!                 # if not obstacle[x,y]:
-!                 fin[i,x,y] = fout[i,np.mod(x-c[i,0],nx),np.mod(y-c[i,1],ny)]
-!
-!     # return u
 
 end program lbm

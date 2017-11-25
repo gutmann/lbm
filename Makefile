@@ -50,11 +50,18 @@ $(info F90 undefined, changed to ${F90})
 	endif
 endif
 
+LFLAGS=${FFLAGS} -L${NETCDF}/lib ${NCAR_LIBS_NETCDF}
+FCFLAGS=${FFLAGS} -c -I${NCAR_INC_NETCDF}
 
 all: lbm_basic
 
 clean:
-	${RM} lbm_basic
+	${RM} lbm_basic *.o *.mod
 
-lbm_basic:lbm_basic.f90
-	${F90} ${FFLAGS} lbm_basic.f90 -o lbm_basic
+lbm_basic:lbm_basic.o io_routines.o
+	${F90} ${LFLAGS} $^ -o $@
+
+lbm_basic.o: io_routines.o
+
+%.o:%.f90
+	${F90} ${FCFLAGS} $< -o $@
