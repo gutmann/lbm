@@ -28,7 +28,8 @@ ifeq (${COMPILER}, gnu)
 $(info F90 undefined, changed to ${F90})
 	endif
 
-	FFLAGS=-Ofast -fimplicit-none # -O3
+	FFLAGS=-Ofast -fimplicit-none -fopenmp # -O3
+	LFLAGS=-lgomp
 	MODOUTPUT=-J $(BUILD)
 	ifeq (${MODE}, debug)
 		FFLAGS=-g -fcheck=all -fbacktrace -fimplicit-none
@@ -45,14 +46,15 @@ ifeq (${COMPILER}, intel)
 $(info F90 undefined, changed to ${F90})
 	endif
 
-	FFLAGS=-fast -u #-O3 -xHost -u
+	FFLAGS=-O3 -xHost -u -qopenmp
+	LFLAGS=-qopenmp
 	MODOUTPUT=-module $(BUILD)
 	ifeq (${MODE}, debug)
 		FFLAGS=-debug -debug-parameters all -traceback -g -u -check all -check noarg_temp_created -CB
 	endif
 endif
 
-LFLAGS=-L${NETCDF}/lib ${NCAR_LIBS_NETCDF}
+LDFLAGS=-L${NETCDF}/lib ${NCAR_LIBS_NETCDF} ${LFLAGS}
 FCFLAGS=${FFLAGS} -c -I${NCAR_INC_NETCDF} ${MODOUTPUT}
 
 all: lbm_basic
@@ -61,7 +63,7 @@ clean:
 	${RM} lbm_basic $(BUILD)*.o $(BUILD)*.mod
 
 lbm_basic:$(BUILD)lbm_basic.o $(BUILD)io_routines.o
-	${F90} ${LFLAGS} $^ -o $@
+	${F90} ${LDFLAGS} $^ -o $@
 
 $(BUILD)lbm_basic.o: $(BUILD)io_routines.o
 
