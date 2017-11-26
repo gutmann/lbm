@@ -173,7 +173,7 @@ contains
         allocate(rho(nx,ny))
 
         ! Set open outflow boundary condition on right wall
-        do concurrent (i=1:3)
+        do i=1,3
             f(on_right(i),nx,:) = f(on_right(i),nx-1,:)
         enddo
 
@@ -187,16 +187,16 @@ contains
             u(:,1,k) = boundary_velocity(:,1,k)
             rho(1,k) = 0
 
-            do concurrent (i = 1:3)
+            do i = 1,3
                 rho(1,k) = rho(1,k) + 1./(1.-u(1,1,k)) * (f(in_middle(i),1,k) + 2. * f(on_right(i),1,k))
             enddo
-            do concurrent (j = 1:nx)
+            do j = 1,nx
                 if (j>1) then
                     if (.not.obstacle(j,k)) then
-                        do concurrent (i = 1:2)
+                        do i = 1,2
                             u(i,j,k) = 0
 
-                            do concurrent (n = 1:nq)
+                            do n = 1,nq
                                 u(i,j,k) = u(i,j,k) + (c(i,n) * f(n,j,k))
                             enddo
                             u(i,j,k) = u(i,j,k) / rho(j,k)
@@ -215,7 +215,7 @@ contains
 
                 if (j==1) then
                     ! Left wall: Zou/He boundary condition.
-                    do concurrent (i = 1:3)
+                    do i = 1,3
                       f(on_left(i),1,k) = feq(on_left(i),1,k)
                       ! f(on_left(i),1,:) = f(on_right(i),1,:) + feq(on_left(i),1,:) - f(on_right(i),1,:)
                     enddo
@@ -226,7 +226,7 @@ contains
 
                 ! Bounce back no slip wall boundaries
                 if (obstacle(j,k)) then
-                    do concurrent (i = 1:nq)
+                    do i = 1,nq
                         f_temp(i,j,k) = f(noslip(i),j,k)
                     enddo
                 endif
@@ -238,8 +238,8 @@ contains
         ! separate loop because we have to know that all collisions / bounceback processes are accounted for before streaming
         !$omp do
         do k = 1, ny
-            do concurrent (j = 1:nx)
-                do concurrent (i = 1:nq)
+            do j = 1,nx
+                do i = 1,nq
                     f(i,j,k) = f_temp(i,mod((j-1)-c(1,i)+nx,nx)+1, mod((k-1)-c(2,i)+ny,ny)+1)
                 enddo
             enddo
