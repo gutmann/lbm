@@ -2,46 +2,76 @@
 ! although some of this is generalized, a lot of it is hard coded for D2Q9
 program lbm
 
-    use io_routines, only : io_write
+    use io_routines, only : io_write, io_read
     implicit none
 
-    integer :: n_iterations = 20000
+    integer :: n_iterations = 200000
 
-    real    :: Re     = 200.0  ! Reynolds number.
-    integer, parameter :: nx     = 520
-    integer, parameter :: ny     = 180
-    ! ly=ny-1.0;
-    integer, parameter :: q      = 9      ! lattice type/size
-    real    :: u_lattice    = 0.04   ! lattice fluid velocity
-    real    :: radius = 20
-    real    :: tau
+    real,    parameter :: Re        = 200.0  ! Reynolds number.
+    real,    parameter :: radius    = 20     ! Effective object radius in grid-cells for use with Reynolds number
+    real,    parameter :: viscosity = 1.81E-5! Viscosity of Air at 15 C           [kg / (m s)]
+    real,    parameter :: kviscosity= 1.48E-5! Kinematic Viscosity of Air at 15 C [m^2 / s]
+    real,    parameter :: u_lattice = 0.04   ! lattice fluid velocity
+    integer, parameter :: q         = 9      ! lattice type/size
+    integer, parameter :: nx        = 1024   ! lattice length
+    integer, parameter :: ny        = 384    ! lattice height
 
+    real,    parameter :: dx        = 1.0    ! grid cell width          [m]
+    real,    parameter :: u_sound   = 343.0  ! Speed of sound in air    [m/s]
+    real,    parameter :: dt        = dx / u_sound ! technically the lattice speed of sound is ~1 / sqrt(3) (?)
 
-    real :: f(q,nx,ny)
-    real :: f_eq(q,nx,ny)
-    real :: c_u(q,nx,ny)
-    real :: u(2,nx,ny)
-
-    real :: velocity(2,nx,ny)
-    real :: rho(nx,ny) = 1
-    logical :: obstacle(nx,ny) = .False.
+    integer, parameter :: output_dt = 1      ! output interval [s]
+    integer, parameter :: output_steps = nint(output_dt / dt)    ! output interval time steps
+    character(len=1024):: output_filename
 
     ! Lattice Constants
     integer :: c(2,q)        ! Lattice particle velocities.
-    real :: w(q) = 1./36. ! Lattice weights
-
+    real    :: w(q) = 1./36. ! Lattice weights
     ! points to the no slip lattice element for each index
     integer :: noslip(q) = [1,3,2,7,9,8,4,6,5]
 
-
     integer :: c_vals(3)    = [0,-1,1]
-    integer :: i
 
+    ! lattice relaxation time used in BGK collision operator
+    real    :: tau
+
+    ! convenience variables
+    integer :: start_x, ymax, i
+
+    ! lattice distribution function
+    real :: f(q,nx,ny)
+    ! equilibrium distribution function
+    real :: f_eq(q,nx,ny)
+    ! lattice speed in each direction (q) at all grid points
+    real :: c_u(q,nx,ny)
+    ! real velocity at each grid cell in x and y directions
+    real :: u(2,nx,ny)
+
+    ! initial velocity (used for boundary conditions)
+    real :: velocity(2,nx,ny)
+    ! density
+    real :: rho(nx,ny) = 1
+    ! lower no-slip boundary location
+    real, allocatable :: topography(:)
+    ! defines the no-slip surface
+    logical :: obstacle(nx,ny) = .False.
+
+
+    ! set up the noslip surface
+    call io_read("profile.nc","data",topography)
     obstacle(:,1) = .True.
 
-    tau    = 1.0 / (3. * (u_lattice * radius/Re) + 0.5) ! time relaxation
-    print*, 'Tau',tau
-    ! Not the most typical c configuration, will have to think about this some
+    topography = topography - minval(topography)
+    start_x = 250 !size(topography,1) - nx
+    do i=1,nx
+        ymax = nint(topography(min(i + start_x,size(topography,1))))
+        if (ymax > 0) obstacle(i,:ymax)=.True.
+    enddo
+
+    tau    = 1.0 / (3. * (u_lattice * radius/Re) + 0.5) ! 1 / time relaxation (collision operator)
+    print*, 'Tau',1/tau
+
+    ! Not the most typical c configuration, will have to think about this some, maybe it doesn't matter...
     !
     ! c =  1 [[ 0,  0],       6  3  9
     !      2  [ 0, -1],        \ | /
@@ -57,9 +87,11 @@ program lbm
         c(1,i) = c_vals((i-1)/3+1)
         c(2,i) = c_vals(mod(i-1,3)+1)
 
-        if (sum(abs(c(:,i))) < 1.1) w(i) = 1/9.0
+        if (sum(abs(c(:,i))) > 1.1)     w(i) = 1 /36.0
+        if ((sum(abs(c(:,i))) < 1.1)    &
+        .and.(sum(abs(c(:,i))) > 0.1))  w(i) = 1 / 9.0
+        if (sum(abs(c(:,i))) < 0.1)     w(i) = 4 / 9.0
     end do
-    w(1) = 4.0/9.0
     ! w = [ 4/9,  1/9,  1/9,  1/9,  1/36,
     !      1/36,  1/9, 1/36, 1/36]
 
@@ -73,13 +105,19 @@ program lbm
 
     ! Time loop
     do i=1,n_iterations
-        if (mod(i,100)==0) print*, i, "  of", n_iterations
+
         call update(f, u, c_u, velocity, f_eq, noslip, obstacle, w, c)
 
-    end do
+        if (mod(i,output_steps)==0) then
 
-    call io_write("output_U.nc","u",  &
-                  reshape(u, [ny,nx,2], order=[3,2,1]))
+            write(output_filename,"(A,I4.4,A)") "output_",i/output_steps,".nc"
+            print*, "Writing outputfile:",trim(output_filename)
+
+            call io_write(trim(output_filename),"u",  &
+                          reshape(reshape(u * (dx/dt), [nx,ny,2], order=[3,1,2]), [nx,ny,2,1]))
+        endif
+
+    end do
 
 contains
 
@@ -92,26 +130,19 @@ contains
         real,    intent(in)    :: w(:)
         integer, intent(in)    :: c(:,:)
 
-        integer :: i,j,k, nc,nx,ny
+        integer :: i,j, nx,ny
 
-        nc = size(feq,1)
         nx = size(feq,2)
         ny = size(feq,3)
 
         do j=1,ny
             do i=1,nx
                 cu(:,i,j) = 3 * (c(1,:) * vel(1,i,j) + c(2,:) * vel(2,i,j))
+
+                feq(:,i,j) = rho(i,j) * w * (1. + cu(:,i,j) + 0.5 * cu(:,i,j)**2  &
+                              - 3./2. * (vel(1,i,j)**2 + vel(2,i,j)**2))
             enddo
         enddo
-
-        do k=1,ny
-            do j=1,nx
-                feq(:,j,k) = rho(j,k) * w * (1. + cu(:,j,k) + 0.5 * cu(:,j,k)**2  &
-                              - 3./2. * (vel(1,j,k)**2 + vel(2,j,k)**2))
-            enddo
-        enddo
-
-        ! print*, 'feq',feq(:,3,3)
 
     end subroutine equilibrium
 
@@ -151,14 +182,18 @@ contains
 
         do k = 1, ny
             do j = 1, nx
-                do i = 1, 2
-                    u(i,j,k) = 0
+                if (.not.obstacle(j,k)) then
+                    do i = 1, 2
+                        u(i,j,k) = 0
 
-                    do n = 1, nq
-                        u(i,j,k) = u(i,j,k) + (c(i,n) * f(n,j,k))
+                        do n = 1, nq
+                            u(i,j,k) = u(i,j,k) + (c(i,n) * f(n,j,k))
+                        enddo
+                        u(i,j,k) = u(i,j,k) / rho(j,k)
                     enddo
-                    u(i,j,k) = u(i,j,k) / rho(j,k)
-                enddo
+                else
+                    u(:,j,k)=0
+                endif
             enddo
         enddo
 
