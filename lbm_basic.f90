@@ -5,7 +5,7 @@ program lbm
     use io_routines, only : io_write, io_read
     implicit none
 
-    integer :: n_iterations = 200000
+    integer :: n_iterations = 2000
 
     real,    parameter :: Re        = 200.0  ! Reynolds number.
     real,    parameter :: radius    = 20     ! Effective object radius in grid-cells for use with Reynolds number
@@ -181,50 +181,58 @@ contains
         rho = sum(f,1)
 
         do k = 1, ny
-            do j = 1, nx
-                if (.not.obstacle(j,k)) then
-                    do i = 1, 2
-                        u(i,j,k) = 0
+            ! Left wall: compute density from known populations.
+            u(:,1,k) = boundary_velocity(:,1,k)
+            rho(1,k) = 0
 
-                        do n = 1, nq
-                            u(i,j,k) = u(i,j,k) + (c(i,n) * f(n,j,k))
+            do i = 1, 3
+                rho(1,k) = rho(1,k) + 1./(1.-u(1,1,k)) * (f(in_middle(i),1,k) + 2. * f(on_right(i),1,k))
+            enddo
+            do j = 1, nx
+                if (j>1) then
+                    if (.not.obstacle(j,k)) then
+                        do i = 1, 2
+                            u(i,j,k) = 0
+
+                            do n = 1, nq
+                                u(i,j,k) = u(i,j,k) + (c(i,n) * f(n,j,k))
+                            enddo
+                            u(i,j,k) = u(i,j,k) / rho(j,k)
                         enddo
-                        u(i,j,k) = u(i,j,k) / rho(j,k)
-                    enddo
-                else
-                    u(:,j,k)=0
-                endif
-            enddo
-        enddo
-
-        ! Left wall: compute density from known populations.
-        u(:,1,:) = boundary_velocity(:,1,:)
-        rho(1,:) = 0
-        do i = 1, 3
-            rho(1,:) = rho(1,:) + 1./(1.-u(1,1,:)) * (f(in_middle(i),1,:) + 2. * f(on_right(i),1,:))
-        enddo
-
-        call equilibrium(rho, u, feq, cu, w, c)
-
-        ! Left wall: Zou/He boundary condition.
-        do i = 1, 3
-            f(on_left(i),1,:) = feq(on_left(i),1,:)
-            ! f(on_left(i),1,:) = f(on_right(i),1,:) + feq(on_left(i),1,:) - f(on_right(i),1,:)
-        enddo
-
-        f_temp = f - tau * (f - feq) ! Collision
-
-        ! bounce back no slip wall boundaries
-        do k = 1, ny
-            do j = 1, nx
-                do i = 1, nq
-                    if (obstacle(j,k)) then
-                        f_temp(i,j,k) = f(noslip(i),j,k)
+                    else
+                        u(:,j,k)=0
                     endif
-                enddo
+                endif
+
+                ! call equilibrium(rho, u, feq, cu, w, c) is effectively this
+                cu(:,j,k) = 3 * (c(1,:) * u(1,j,k) + c(2,:) * u(2,j,k))
+
+                feq(:,j,k) = rho(j,k) * w * (1. + cu(:,j,k) + 0.5 * cu(:,j,k)**2  &
+                              - 3./2. * (u(1,j,k)**2 + u(2,j,k)**2))
+
+
+                if (j==1) then
+                    ! Left wall: Zou/He boundary condition.
+                    do i = 1, 3
+                      f(on_left(i),1,k) = feq(on_left(i),1,k)
+                      ! f(on_left(i),1,:) = f(on_right(i),1,:) + feq(on_left(i),1,:) - f(on_right(i),1,:)
+                    enddo
+                endif
+
+                ! BGK Collision
+                f_temp(:,j,k) = f(:,j,k) - tau * (f(:,j,k) - feq(:,j,k))
+
+                ! Bounce back no slip wall boundaries
+                if (obstacle(j,k)) then
+                    do i = 1, nq
+                        f_temp(i,j,k) = f(noslip(i),j,k)
+                    enddo
+                endif
+
             enddo
         enddo
 
+        ! separate loop because we have to know that all collisions / bounceback processes are accounted for before streaming
         do k = 1, ny
             do j = 1, nx
                 do i = 1, nq
