@@ -5,7 +5,7 @@ program lbm
     use io_routines, only : io_write, io_read
     implicit none
 
-    integer :: n_iterations = 2000
+    integer :: n_iterations = 200000
 
     real,    parameter :: Re        = 200.0  ! Reynolds number.
     real,    parameter :: radius    = 20     ! Effective object radius in grid-cells for use with Reynolds number
@@ -55,6 +55,8 @@ program lbm
     real, allocatable :: topography(:)
     ! defines the no-slip surface
     logical :: obstacle(nx,ny) = .False.
+
+    print*, (dt * kviscosity) / (0.577**2) + 0.5, dt * kviscosity / (0.577**2), 1/((dt * kviscosity) / (0.577**2) + 0.5)
 
 
     ! set up the noslip surface
@@ -110,7 +112,7 @@ program lbm
 
         if (mod(i,output_steps)==0) then
 
-            write(output_filename,"(A,I4.4,A)") "output_",i/output_steps,".nc"
+            write(output_filename,"(A,I4.4,A)") "output/output_",i/output_steps,".nc"
             print*, "Writing outputfile:",trim(output_filename)
 
             call io_write(trim(output_filename),"u",  &
