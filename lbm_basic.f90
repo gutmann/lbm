@@ -5,9 +5,9 @@ program lbm
     use io_routines, only : io_write, io_read
     implicit none
 
-    integer :: n_iterations = 200000
+    integer :: n_iterations = 110000
 
-    real,    parameter :: Re        = 200.0  ! Reynolds number.
+    real,    parameter :: Re        = 300.0  ! Reynolds number.
     real,    parameter :: radius    = 20     ! Effective object radius in grid-cells for use with Reynolds number
     real,    parameter :: viscosity = 1.81E-5! Viscosity of Air at 15 C           [kg / (m s)]
     real,    parameter :: kviscosity= 1.48E-5! Kinematic Viscosity of Air at 15 C [m^2 / s]
@@ -46,6 +46,7 @@ program lbm
     real :: c_u(q,nx,ny)
     ! real velocity at each grid cell in x and y directions
     real :: u(2,nx,ny)
+    real :: output_u(2,nx,ny)
 
     ! initial velocity (used for boundary conditions)
     real :: velocity(2,nx,ny)
@@ -104,19 +105,25 @@ program lbm
 
     f = f_eq
     u = velocity
+    output_u = 0
 
     ! Time loop
     do i=1,n_iterations
 
         call update(f, u, c_u, velocity, f_eq, noslip, obstacle, w, c)
 
+        output_u = output_u + u
+
         if (mod(i,output_steps)==0) then
 
-            write(output_filename,"(A,I4.4,A)") "output/output_",i/output_steps,".nc"
-            print*, "Writing outputfile:",trim(output_filename)
+            if (i/output_steps > 250) then
+                write(output_filename,"(A,I4.4,A)") "output/output_",i/output_steps,".nc"
+                print*, "Writing outputfile:",trim(output_filename)
 
-            call io_write(trim(output_filename),"u",  &
-                          reshape(reshape(u * (dx/dt), [nx,ny,2], order=[3,1,2]), [nx,ny,2,1]))
+                call io_write(trim(output_filename),"u",  &
+                              reshape(reshape((output_u / output_steps) * (dx/dt), [nx,ny,2], order=[3,1,2]), [nx,ny,2,1]))
+            endif
+            output_u = 0
         endif
 
     end do
