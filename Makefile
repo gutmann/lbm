@@ -19,33 +19,18 @@ $(info F90 undefined, changed to ${F90})
 endif
 
 ifeq (${COMPILER}, gnu)
-	ifndef F90
-		ifdef FC
-			F90=${FC}
-		else
-			F90=gfortran
-		endif
-$(info F90 undefined, changed to ${F90})
-	endif
-
-	FFLAGS=-Ofast -fimplicit-none -fopenmp # -O3
-	LFLAGS=-lgomp
+	FFLAGS=-Ofast -fimplicit-none #-fopenmp # -O3
 	MODOUTPUT=-J $(BUILD)
 	ifeq (${MODE}, debug)
 		FFLAGS=-g -fcheck=all -fbacktrace -fimplicit-none
 	endif
+	ifeq (${MODE}, omp)
+		FFLAGS=-Ofast -fimplicit-none -fopenmp
+		LFLAGS=-lgomp
+	endif
 endif
 
 ifeq (${COMPILER}, intel)
-	ifndef F90
-		ifdef FC
-			F90=${FC}
-		else
-			F90=ifort
-		endif
-$(info F90 undefined, changed to ${F90})
-	endif
-
 	FFLAGS=-O3 -xHost -u -qopenmp
 	LFLAGS=-qopenmp
 	MODOUTPUT=-module $(BUILD)
@@ -54,7 +39,7 @@ $(info F90 undefined, changed to ${F90})
 	endif
 endif
 
-LDFLAGS=-L${NETCDF}/lib ${NCAR_LIBS_NETCDF} ${LFLAGS}
+LDFLAGS=-L${NETCDF}/lib -lnetcdf -lnetcdff ${LFLAGS}
 FCFLAGS=${FFLAGS} -c -I${NCAR_INC_NETCDF} ${MODOUTPUT}
 
 all: lbm_basic

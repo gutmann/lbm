@@ -5,20 +5,22 @@ program lbm
     use io_routines, only : io_write, io_read
     implicit none
 
-    integer :: n_iterations = 110000
+    integer :: n_iterations = 100000
 
-    real,    parameter :: Re        = 300.0  ! Reynolds number.
+    real,    parameter :: Re        = 300.0  ! Reynolds number. = u L / v (wind speed * length / viscosity)
     real,    parameter :: radius    = 20     ! Effective object radius in grid-cells for use with Reynolds number
+
     real,    parameter :: viscosity = 1.81E-5! Viscosity of Air at 15 C           [kg / (m s)]
     real,    parameter :: kviscosity= 1.48E-5! Kinematic Viscosity of Air at 15 C [m^2 / s]
-    real,    parameter :: u_lattice = 0.04   ! lattice fluid velocity
-    integer, parameter :: q         = 9      ! lattice type/size
-    integer, parameter :: nx        = 1024   ! lattice length
-    integer, parameter :: ny        = 384    ! lattice height
 
     real,    parameter :: dx        = 1.0    ! grid cell width          [m]
     real,    parameter :: u_sound   = 343.0  ! Speed of sound in air    [m/s]
     real,    parameter :: dt        = dx / u_sound ! technically the lattice speed of sound is ~1 / sqrt(3) (?)
+
+    real,    parameter :: u_lattice = 0.04   ! lattice fluid velocity = wind speed / dx * dt
+    integer, parameter :: q         = 9      ! lattice type/size
+    integer, parameter :: nx        = 1024   ! lattice length
+    integer, parameter :: ny        = 384    ! lattice height
 
     integer, parameter :: output_dt = 1      ! output interval [s]
     integer, parameter :: output_steps = nint(output_dt / dt)    ! output interval time steps
@@ -57,8 +59,8 @@ program lbm
     ! defines the no-slip surface
     logical :: obstacle(nx,ny) = .False.
 
-    print*, (dt * kviscosity) / (0.577**2) + 0.5, dt * kviscosity / (0.577**2), 1/((dt * kviscosity) / (0.577**2) + 0.5)
-
+    print*, (dt * kviscosity) / (0.577**2) + 0.5,  &
+            dt * kviscosity / (0.577**2)
 
     ! set up the noslip surface
     call io_read("profile.nc","data",topography)
@@ -72,6 +74,7 @@ program lbm
     enddo
 
     tau    = 1.0 / (3. * (u_lattice * radius/Re) + 0.5) ! 1 / time relaxation (collision operator)
+    ! tau = 3 * kviscosity * (dt / dx**2) + 0.5
     print*, 'Tau',1/tau
 
     ! Not the most typical c configuration, will have to think about this some, maybe it doesn't matter...
@@ -107,6 +110,7 @@ program lbm
     u = velocity
     output_u = 0
 
+    print*, "Output every ", output_steps
     ! Time loop
     do i=1,n_iterations
 
